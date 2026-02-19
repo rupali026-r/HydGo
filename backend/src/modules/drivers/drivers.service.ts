@@ -27,12 +27,33 @@ export class DriversService {
     if (!driver) throw new AppError('Driver not found', 404, 'NOT_FOUND');
     if (driver.approved) throw new AppError('Driver already approved', 400, 'ALREADY_APPROVED');
 
-    // Find available bus (optional — driver can be approved without bus)
-    const availableBus = await prisma.bus.findFirst({
-      where: { driver: null, status: 'OFFLINE', isSimulated: false },
+    // Try to find an existing unassigned real bus
+    let assignedBus = await prisma.bus.findFirst({
+      where: { driver: null, isSimulated: false },
       include: { route: true },
       orderBy: { createdAt: 'asc' },
     });
+
+    // If no real bus available, auto-create one on a random route
+    if (!assignedBus) {
+      const route = await prisma.route.findFirst({ orderBy: { createdAt: 'asc' } });
+      const driverCount = await prisma.driver.count();
+      const regNo = `TS-${String(driverCount + 1).padStart(4, '0')}`;
+
+      assignedBus = await prisma.bus.create({
+        data: {
+          registrationNo: regNo,
+          routeId: route?.id ?? null,
+          capacity: 52,
+          status: 'OFFLINE',
+          isSimulated: false,
+          latitude: 17.385,
+          longitude: 78.4867,
+        },
+        include: { route: true },
+      });
+      logger.info('Auto-created bus for driver', { busId: assignedBus.id, regNo });
+    }
 
     const [updated] = await prisma.$transaction([
       prisma.driver.update({
@@ -40,7 +61,7 @@ export class DriversService {
         data: {
           approved: true,
           driverStatus: 'OFFLINE',
-          ...(availableBus ? { busId: availableBus.id } : {}),
+          busId: assignedBus.id,
         },
       }),
       prisma.user.update({ where: { id: driver.userId }, data: { status: 'ACTIVE' } }),
@@ -53,15 +74,13 @@ export class DriversService {
       const driverNamespace = io.of('/driver');
       driverNamespace.to(driver.userId).emit('driver:approved', {
         driverId,
-        busId: availableBus?.id ?? null,
-        registrationNo: availableBus?.registrationNo ?? null,
-        capacity: availableBus?.capacity ?? null,
-        routeId: availableBus?.route?.id ?? null,
-        routeNumber: availableBus?.route?.routeNumber ?? null,
-        routeName: availableBus?.route?.name ?? null,
-        message: availableBus
-          ? 'Your driver application has been approved and bus assigned'
-          : 'Your driver application has been approved. A bus will be assigned soon.',
+        busId: assignedBus.id,
+        registrationNo: assignedBus.registrationNo,
+        capacity: assignedBus.capacity,
+        routeId: assignedBus.route?.id ?? null,
+        routeNumber: assignedBus.route?.routeNumber ?? null,
+        routeName: assignedBus.route?.name ?? null,
+        message: 'Your driver application has been approved and bus assigned',
       });
 
       // Emit to admin namespace
@@ -83,12 +102,12 @@ export class DriversService {
       logger.warn('Failed to emit driver approval notification', { error: err });
     }
 
-    logger.info('Driver approved', { driverId });
+    logger.info('Driver approved', { driverId, busId: assignedBus.id });
     return updated;
   }
 
   async getProfile(userId: string) {
-    const driver = await prisma.driver.findUnique({
+    let driver = await prisma.driver.findUnique({
       where: { userId, deletedAt: null },
       include: {
         user: { select: { id: true, name: true, email: true, role: true, status: true } },
@@ -96,6 +115,42 @@ export class DriversService {
       },
     });
     if (!driver) throw new AppError('Driver profile not found', 404, 'NOT_FOUND');
+
+    // Auto-assign bus if approved but none assigned
+    if (driver.approved && !driver.bus) {
+      let bus = await prisma.bus.findFirst({
+        where: { driver: null, isSimulated: false },
+        include: { route: true },
+      });
+      if (!bus) {
+        const route = await prisma.route.findFirst({ orderBy: { createdAt: 'asc' } });
+        const driverCount = await prisma.driver.count();
+        const regNo = `TS-${String(driverCount + 1).padStart(4, '0')}`;
+        bus = await prisma.bus.create({
+          data: {
+            registrationNo: regNo,
+            routeId: route?.id ?? null,
+            capacity: 52,
+            status: 'OFFLINE',
+            isSimulated: false,
+            latitude: 17.385,
+            longitude: 78.4867,
+          },
+          include: { route: true },
+        });
+      }
+      await prisma.driver.update({ where: { id: driver.id }, data: { busId: bus.id } });
+      // Re-fetch with bus included
+      driver = await prisma.driver.findUnique({
+        where: { userId, deletedAt: null },
+        include: {
+          user: { select: { id: true, name: true, email: true, role: true, status: true } },
+          bus: { include: { route: true } },
+        },
+      });
+      if (!driver) throw new AppError('Driver profile not found', 404, 'NOT_FOUND');
+    }
+
     return driver;
   }
 
