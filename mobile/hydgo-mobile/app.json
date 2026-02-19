@@ -39,7 +39,7 @@
       "typedRoutes": true
     },
     "extra": {
-      "API_BASE_URL": "http://localhost:3000/api",
+      "API_BASE_URL": "https://hydgo-backend.onrender.com/api",
       "GOOGLE_WEB_CLIENT_ID": "952925820499-b2oqb7ee796n6hi2ube4uji0dbooapdn.apps.googleusercontent.com",
       "GOOGLE_ANDROID_CLIENT_ID": "952925820499-cach5030a8njl55aegque6kq67b0fmth.apps.googleusercontent.com"
     }
