@@ -40,13 +40,17 @@ async function bootstrap(): Promise<void> {
 
   // 4. Start simulation if enabled
   // ── Transit Graph ──────────────────────────────────────────────────────
-  const graphExists = await isGraphBuilt();
-  if (!graphExists) {
-    logger.info('Transit graph not found — building from routes...');
-    await buildTransitGraph();
+  try {
+    const graphExists = await isGraphBuilt();
+    if (!graphExists) {
+      logger.info('Transit graph not found — building from routes...');
+      await buildTransitGraph();
+    }
+    await loadGraph();
+    logger.info('Transit graph loaded into memory');
+  } catch (graphErr) {
+    logger.warn('Transit graph not available — skipping (server will still run)', graphErr);
   }
-  await loadGraph();
-  logger.info('Transit graph loaded into memory');
 
   // Phase 7.5: Start memory & performance monitor
   startMemoryMonitor(30_000);
