@@ -106,11 +106,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const profile: DriverProfile = data.data ?? data;
       setDriver(profile);
       
-      // Update driver store immediately
+      // Update driver store with profile data (without forcing ONLINE)
       const { useDriverStore } = await import('../store/driverStore');
       const store = useDriverStore.getState();
       if (profile.bus) {
-        store.setInit({
+        // Has bus assigned — populate bus info, keep current operational status
+        useDriverStore.setState({
           driverId: profile.id,
           busId: profile.bus.id,
           registrationNo: profile.bus.registrationNo,
@@ -118,8 +119,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           routeNumber: profile.bus.route?.routeNumber || null,
           routeName: profile.bus.route?.name || null,
           capacity: profile.bus.capacity || 40,
-          status: profile.driverStatus as any,
         });
+        // If store was stuck in NO_BUS_ASSIGNED, move to OFFLINE now
+        if (store.status === 'NO_BUS_ASSIGNED') {
+          store.transition('OFFLINE');
+        }
+      } else {
+        // Approved but no bus — transition to NO_BUS_ASSIGNED
+        useDriverStore.setState({ driverId: profile.id });
+        if (store.status === 'OFFLINE' || store.status === 'DISCONNECTED') {
+          store.transition('NO_BUS_ASSIGNED');
+        }
       }
       return;
     } catch {
@@ -194,11 +204,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
         setDriver(driverProfile);
         
-        // Update driver store immediately
+        // Update driver store with profile data (without forcing ONLINE)
         const { useDriverStore } = await import('../store/driverStore');
         const store = useDriverStore.getState();
         if (driverProfile.bus) {
-          store.setInit({
+          useDriverStore.setState({
             driverId: driverProfile.id,
             busId: driverProfile.bus.id,
             registrationNo: driverProfile.bus.registrationNo,
@@ -206,8 +216,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             routeNumber: driverProfile.bus.route?.routeNumber || null,
             routeName: driverProfile.bus.route?.name || null,
             capacity: driverProfile.bus.capacity || 40,
-            status: driverProfile.driverStatus as any,
           });
+        } else {
+          // Approved but no bus
+          useDriverStore.setState({ driverId: driverProfile.id });
+          if (store.status === 'OFFLINE') {
+            store.transition('NO_BUS_ASSIGNED');
+          }
         }
       } else {
         // Fallback: fetch from profile endpoint
