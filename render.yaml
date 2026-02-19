@@ -9,6 +9,7 @@ services:
     name: hydgo-redis
     plan: free
     region: oregon
+    ipAllowList: []
     maxmemoryPolicy: allkeys-lru
     
   # Backend API
