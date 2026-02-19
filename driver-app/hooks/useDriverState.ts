@@ -95,11 +95,23 @@ export function useDriverState() {
       await connect();
 
       // Start foreground GPS tracking
-      await startTracking();
+      try {
+        await startTracking();
+      } catch {
+        console.warn('[GoOnline] Foreground GPS tracking failed (expected on web)');
+      }
 
-      // Start background tracking (requests bg permission if needed)
-      const bgStarted = await startBackgroundTracking();
-      setBackgroundTrackingActive(bgStarted);
+      // Start background tracking — optional, expected to fail on web
+      try {
+        const bgStarted = await startBackgroundTracking();
+        setBackgroundTrackingActive(bgStarted);
+      } catch {
+        console.warn('[GoOnline] Background tracking not available');
+        setBackgroundTrackingActive(false);
+      }
+
+      // Clear any previous errors since we connected successfully
+      setError(null);
     } catch {
       setError('Failed to go online');
     } finally {
