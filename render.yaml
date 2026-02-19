@@ -1,18 +1,14 @@
-services:
-  # PostgreSQL Database
-  - type: pserv
-    name: hydgo-postgres
-    env: docker
+databases:
+  - name: hydgo-postgres
     plan: free
     region: oregon
-    ipAllowList: []
-    
+
+services:
   # Redis Cache
   - type: redis
     name: hydgo-redis
     plan: free
     region: oregon
-    ipAllowList: []
     maxmemoryPolicy: allkeys-lru
     
   # Backend API
