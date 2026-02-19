@@ -1,0 +1,250 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Enums ──────────────────────────────────────────────────────
+
+enum Role {
+  PASSENGER
+  DRIVER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+}
+
+enum BusStatus {
+  ACTIVE
+  OFFLINE
+  MAINTENANCE
+}
+
+enum RouteType {
+  LOCAL
+  METRO_EXPRESS
+  SUPER_LUXURY
+  PALLE_VELUGU
+  EXPRESS
+  GARUDA_PLUS
+}
+
+enum TripStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum DriverStatus {
+  PENDING
+  OFFLINE
+  ONLINE
+  ON_TRIP
+  IDLE
+  DISCONNECTED
+  REJECTED
+}
+
+// ── Models ─────────────────────────────────────────────────────
+
+model User {
+  id            String         @id @default(uuid())
+  name          String
+  email         String         @unique
+  password      String
+  role          Role           @default(PASSENGER)
+  status        UserStatus     @default(ACTIVE)
+  phone         String?
+  deletedAt     DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  pushToken     String?
+  driver        Driver?
+  refreshTokens RefreshToken[]
+
+  @@index([role])
+  @@index([status])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Driver {
+  id             String         @id @default(uuid())
+  userId         String         @unique
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  licenseNumber  String
+  approved       Boolean        @default(false)
+  busId          String?        @unique
+  bus            Bus?           @relation(fields: [busId], references: [id])
+  driverStatus   DriverStatus   @default(OFFLINE)
+  lastLocationAt DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  stateLogs      DriverStateLog[]
+
+  @@index([approved])
+  @@index([driverStatus])
+  @@map("drivers")
+}
+
+model Bus {
+  id             String    @id @default(uuid())
+  registrationNo String    @unique
+  routeId        String?
+  route          Route?    @relation(fields: [routeId], references: [id])
+  capacity       Int       @default(52)
+  passengerCount Int       @default(0)
+  latitude       Float     @default(0)
+  longitude      Float     @default(0)
+  heading        Float     @default(0)
+  speed          Float     @default(0)
+  status         BusStatus @default(OFFLINE)
+  isSimulated    Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  driver         Driver?
+  trips          Trip[]
+
+  @@index([status])
+  @@index([routeId])
+  @@map("buses")
+}
+
+model Route {
+  id          String    @id @default(uuid())
+  routeNumber String    @unique
+  name        String
+  routeType   RouteType
+  polyline    String    @db.Text
+  avgSpeed    Float     @default(30)
+  distance    Float     @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  stops       Stop[]
+  buses       Bus[]
+
+  @@map("routes")
+}
+
+model Stop {
+  id        String   @id @default(uuid())
+  name      String
+  latitude  Float
+  longitude Float
+  routeId   String
+  route     Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  stopOrder Int
+  createdAt DateTime @default(now())
+
+  @@unique([routeId, stopOrder])
+  @@index([routeId])
+  @@map("stops")
+}
+
+model Trip {
+  id        String     @id @default(uuid())
+  busId     String
+  bus       Bus        @relation(fields: [busId], references: [id], onDelete: Cascade)
+  startTime DateTime   @default(now())
+  endTime   DateTime?
+  status    TripStatus @default(IN_PROGRESS)
+  createdAt DateTime   @default(now())
+
+  @@index([busId, status])
+  @@map("trips")
+}
+
+model DriverStateLog {
+  id        String       @id @default(uuid())
+  driverId  String
+  driver    Driver       @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  fromState DriverStatus
+  toState   DriverStatus
+  reason    String
+  createdAt DateTime     @default(now())
+
+  @@index([driverId])
+  @@index([createdAt])
+  @@map("driver_state_logs")
+}
+
+// ── Transit Graph Models ────────────────────────────────────────────────
+
+model StopNode {
+  id            String      @id @default(cuid())
+  stopId        String      @unique
+  name          String
+  lat           Float
+  lng           Float
+  outgoingEdges GraphEdge[] @relation("from")
+  incomingEdges GraphEdge[] @relation("to")
+  createdAt     DateTime    @default(now())
+
+  @@index([lat, lng])
+  @@map("stop_nodes")
+}
+
+model GraphEdge {
+  id            String   @id @default(cuid())
+  fromNodeId    String
+  toNodeId      String
+  routeId       String
+  routeNumber   String   @default("")
+  distance      Float
+  avgTravelTime Float
+  transferCost  Float    @default(0)
+  stopOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  fromNode StopNode @relation("from", fields: [fromNodeId], references: [id], onDelete: Cascade)
+  toNode   StopNode @relation("to", fields: [toNodeId], references: [id], onDelete: Cascade)
+
+  @@index([fromNodeId])
+  @@index([toNodeId])
+  @@index([routeId])
+  @@map("graph_edges")
+}
+
+enum NotificationType {
+  DRIVER_APPLY
+  DRIVER_DISCONNECT
+  HIGH_DELAY
+  COMPLAINT
+  SYSTEM_ALERT
+  DRIVER_APPROVED
+  DRIVER_REJECTED
+}
+
+model AdminNotification {
+  id        String           @id @default(uuid())
+  type      NotificationType
+  title     String
+  message   String
+  read      Boolean          @default(false)
+  metadata  Json?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([read])
+  @@index([createdAt])
+  @@map("admin_notifications")
+}

@@ -1,0 +1,54 @@
+services:
+  # PostgreSQL Database
+  - type: pserv
+    name: hydgo-postgres
+    env: docker
+    plan: free
+    region: oregon
+    ipAllowList: []
+    
+  # Redis Cache
+  - type: redis
+    name: hydgo-redis
+    plan: free
+    region: oregon
+    ipAllowList: []
+    maxmemoryPolicy: allkeys-lru
+    
+  # Backend API
+  - type: web
+    name: hydgo-backend
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hydgo-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: hydgo-redis
+          property: connectionString
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_EXPIRES
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES
+        value: 7d
+      - key: ADMIN_SECRET
+        sync: false
+      - key: CORS_ORIGIN
+        value: https://hydgo-passenger.vercel.app,https://hydgo-driver.vercel.app
+      - key: SIMULATION_MODE
+        value: true
+    healthCheckPath: /api/health

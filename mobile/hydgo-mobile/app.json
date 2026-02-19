@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "hydgo-mobile",
+    "slug": "hydgo-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "hydgomobile",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.hydgo.mobile",
+      "googleServicesFile": "./google-services.json"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "API_BASE_URL": "http://localhost:3000/api",
+      "GOOGLE_WEB_CLIENT_ID": "952925820499-b2oqb7ee796n6hi2ube4uji0dbooapdn.apps.googleusercontent.com",
+      "GOOGLE_ANDROID_CLIENT_ID": "952925820499-cach5030a8njl55aegque6kq67b0fmth.apps.googleusercontent.com"
+    }
+  }
+}
