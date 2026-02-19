@@ -27,16 +27,12 @@ export class DriversService {
     if (!driver) throw new AppError('Driver not found', 404, 'NOT_FOUND');
     if (driver.approved) throw new AppError('Driver already approved', 400, 'ALREADY_APPROVED');
 
-    // Find available bus
+    // Find available bus (optional — driver can be approved without bus)
     const availableBus = await prisma.bus.findFirst({
-      where: { driver: null, status: 'OFFLINE' },
+      where: { driver: null, status: 'OFFLINE', isSimulated: false },
       include: { route: true },
       orderBy: { createdAt: 'asc' },
     });
-
-    if (!availableBus) {
-      throw new AppError('No available buses to assign', 400, 'NO_BUSES_AVAILABLE');
-    }
 
     const [updated] = await prisma.$transaction([
       prisma.driver.update({
@@ -44,7 +40,7 @@ export class DriversService {
         data: {
           approved: true,
           driverStatus: 'OFFLINE',
-          busId: availableBus.id,
+          ...(availableBus ? { busId: availableBus.id } : {}),
         },
       }),
       prisma.user.update({ where: { id: driver.userId }, data: { status: 'ACTIVE' } }),
@@ -57,13 +53,15 @@ export class DriversService {
       const driverNamespace = io.of('/driver');
       driverNamespace.to(driver.userId).emit('driver:approved', {
         driverId,
-        busId: availableBus.id,
-        registrationNo: availableBus.registrationNo,
-        capacity: availableBus.capacity,
-        routeId: availableBus.route?.id,
-        routeNumber: availableBus.route?.routeNumber,
-        routeName: availableBus.route?.name,
-        message: 'Your driver application has been approved and bus assigned',
+        busId: availableBus?.id ?? null,
+        registrationNo: availableBus?.registrationNo ?? null,
+        capacity: availableBus?.capacity ?? null,
+        routeId: availableBus?.route?.id ?? null,
+        routeNumber: availableBus?.route?.routeNumber ?? null,
+        routeName: availableBus?.route?.name ?? null,
+        message: availableBus
+          ? 'Your driver application has been approved and bus assigned'
+          : 'Your driver application has been approved. A bus will be assigned soon.',
       });
 
       // Emit to admin namespace
