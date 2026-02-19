@@ -194,6 +194,7 @@ export default function RoutesExplorer() {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={{ flexGrow: 0 }}
         contentContainerStyle={styles.chipRow}
       >
         {FILTERS.map((f) => (
@@ -276,6 +277,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 8,
+    alignItems: 'center',
   },
   chip: {
     paddingHorizontal: 16,

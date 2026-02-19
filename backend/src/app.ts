@@ -105,9 +105,11 @@ app.get('/api/health', async (_req, res) => {
 });
 
 // ── Public routes ───────────────────────────────────────────────────────────
+import geocodeRouter from './modules/geocode/geocode.routes';
 app.use('/api/auth', authRouter);
 app.use('/api/routes', routeRouter);   // public — bus route & stop data
 app.use('/api/stops', stopRouter);     // public — stop lookup
+app.use('/api/geocode', geocodeRouter); // proxy for Nominatim reverse geocoding
 
 // ── Semi-public bus routes (nearby is public, rest protected) ───────────────
 import { BusesController as BusCtrlPublic } from './modules/buses/buses.controller';

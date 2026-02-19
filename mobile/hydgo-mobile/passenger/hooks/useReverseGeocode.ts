@@ -27,12 +27,12 @@ export function useReverseGeocode() {
     (async () => {
       try {
         if (Platform.OS === 'web') {
-          // Use Nominatim for web (free, no key needed)
-          const url = `https://nominatim.openstreetmap.org/reverse?lat=${userLocation.latitude}&lon=${userLocation.longitude}&format=json&addressdetails=1&accept-language=en`;
-          const res = await fetch(url, {
-            headers: { 'User-Agent': 'HydGo-App/1.0' },
+          // Use backend proxy to avoid CORS issues with Nominatim
+          const { default: api } = await import('../../lib/api');
+          const res = await api.get('/geocode/reverse', {
+            params: { lat: userLocation.latitude, lng: userLocation.longitude },
           });
-          const data = await res.json();
+          const data = res.data?.data;
           if (data?.display_name) {
             // Extract short name
             const parts = data.display_name.split(',');
