@@ -35,6 +35,7 @@ import { getMemoryMetrics, getRouteEngineMetrics, getLastDijkstraStats, getGraph
 // ── App ────────────────────────────────────────────────────────────────────
 
 const app = express();
+app.set('trust proxy', 1);
 
 // ── Security headers ────────────────────────────────────────────────────────
 app.disable('x-powered-by');
