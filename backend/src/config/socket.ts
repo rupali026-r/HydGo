@@ -9,10 +9,14 @@ let driverNs: Namespace;
 let adminNs: Namespace;
 
 export function initializeSocket(httpServer: HttpServer): Server {
-  const corsOrigin = env.CORS_ORIGIN === '*' ? '*' : env.CORS_ORIGIN.split(',').map((o) => o.trim());
+  const corsOrigins = env.CORS_ORIGIN === '*'
+    ? undefined
+    : env.CORS_ORIGIN.split(',').map((o) => o.trim());
   io = new Server(httpServer, {
     cors: {
-      origin: corsOrigin,
+      origin: corsOrigins === undefined
+        ? (origin: any, cb: any) => cb(null, true)
+        : corsOrigins,
       methods: ['GET', 'POST'],
       credentials: true,
     },

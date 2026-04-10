@@ -54,8 +54,20 @@ app.use(
 );
 
 // ── CORS ────────────────────────────────────────────────────────────────────
-const corsOrigin = env.CORS_ORIGIN === '*' ? '*' : env.CORS_ORIGIN.split(',').map((o) => o.trim());
-app.use(cors({ origin: corsOrigin, credentials: true }));
+// When CORS_ORIGIN is '*', use a callback that reflects the request origin.
+// This is required because browsers block `Access-Control-Allow-Origin: *`
+// when `credentials: true` is set.
+const corsOrigins = env.CORS_ORIGIN === '*'
+  ? undefined  // undefined = reflect request origin
+  : env.CORS_ORIGIN.split(',').map((o) => o.trim());
+app.use(cors({
+  origin: corsOrigins === undefined
+    ? (origin, cb) => cb(null, true)  // allow all origins dynamically
+    : corsOrigins,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 
 // ── Body parsing ────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '1mb' }));
