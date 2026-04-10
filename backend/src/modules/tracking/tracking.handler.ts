@@ -104,6 +104,8 @@ export function setupPassengerTracking(ns: Namespace): void {
         heading: b.heading,
         speed: b.speed,
         isSimulated: b.isSimulated,
+        isLiveDriver: !b.isSimulated,
+        lastUpdated: b.updatedAt?.toISOString() ?? new Date().toISOString(),
         occupancy: calculateOccupancy(b.passengerCount, b.capacity),
       }));
 
@@ -357,10 +359,22 @@ export function setupDriverTracking(ns: Namespace): void {
       return;
     }
 
-    // Capture bus reference — guaranteed non-null past this point
     const bus = driver.bus;
     const busId = bus.id;
     const routeId = bus.routeId ?? undefined;
+
+    // Load route stops for stop detection
+    let routeStops: Array<{ latitude: number; longitude: number; name: string }> = [];
+    if (routeId) {
+      try {
+        const stops = await prisma.stop.findMany({
+          where: { routeId },
+          select: { latitude: true, longitude: true, name: true },
+          orderBy: { stopOrder: 'asc' },
+        });
+        routeStops = stops;
+      } catch { /* non-critical */ }
+    }
 
     // ── Hybrid Integration: register this bus as driver-controlled ──
     const regResult = registerDriverBus(busId, driver.id, routeId);
@@ -533,6 +547,18 @@ export function setupDriverTracking(ns: Namespace): void {
           const occupancy = calculateOccupancy(passengerCount, bus.capacity);
 
           // ── Build update payload ──
+          // Stop detection: check if bus is within 50m of a route stop
+          let nearStop: { name: string; arriving: boolean } | undefined;
+          if (routeStops.length > 0) {
+            for (const stop of routeStops) {
+              const distToStop = haversineDistance(data.lat, data.lng, stop.latitude, stop.longitude);
+              if (distToStop < 0.05) { // 50m
+                nearStop = { name: stop.name, arriving: true };
+                break;
+              }
+            }
+          }
+
           const busUpdate = {
             busId,
             routeId: routeId ?? '',
@@ -544,9 +570,12 @@ export function setupDriverTracking(ns: Namespace): void {
             capacity: bus.capacity,
             occupancy,
             isSimulated: false,
+            isLiveDriver: true,
+            lastUpdated: new Date().toISOString(),
             registrationNo: bus.registrationNo,
             routeNumber: bus.route?.routeNumber,
             routeName: bus.route?.name,
+            nearStop,
           };
 
           // ── Broadcast to passenger & admin namespaces ──

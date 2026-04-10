@@ -66,6 +66,11 @@ export interface BusState {
   occupancy: OccupancyInfo;
   eta?: ETAInfo;
   distanceMeters?: number;
+  // Hybrid tracking fields
+  isSimulated?: boolean;
+  isLiveDriver?: boolean;
+  lastUpdated?: string;
+  nearStop?: { name: string; arriving: boolean };
   // Intelligence fields (Phase 6)
   trafficLevel?: TrafficLevel;
   congestionLevel?: CongestionLevel;
@@ -108,18 +113,24 @@ export interface RouteInfo {
   stops?: StopInfo[];
 }
 
-/** Bus update from simulation broadcast */
+/** Bus update from simulation/driver broadcast */
 export interface BusUpdate {
   busId: string;
   routeId?: string;
   routeNumber?: string;
+  routeName?: string;
   latitude: number;
   longitude: number;
   heading: number;
   speed: number;
   passengerCount: number;
   capacity: number;
-  occupancy: OccupancyInfo;
+  occupancy?: OccupancyInfo;
+  isSimulated?: boolean;
+  isLiveDriver?: boolean;
+  lastUpdated?: string;
+  nearStop?: { name: string; arriving: boolean };
+  registrationNo?: string;
 }
 
 /** Socket connection state */

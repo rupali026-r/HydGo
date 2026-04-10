@@ -61,7 +61,7 @@ export default function DashboardScreen() {
   const gpsActive = useDriverStore((s) => s.gpsActive);
   const lastError = useDriverStore((s) => s.lastError);
   const activeTripId = useDriverStore((s) => s.activeTripId);
-  const lastOccupancy = useDriverStore((s) => s.lastOccupancy);
+  const lastLocationTimestamp = useDriverStore((s) => s.lastLocationTimestamp);
   const incrementPassengers = useDriverStore((s) => s.incrementPassengers);
   const decrementPassengers = useDriverStore((s) => s.decrementPassengers);
 
@@ -254,10 +254,21 @@ export default function DashboardScreen() {
                 ]}
               />
             </View>
-            {lastOccupancy && (
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>TRACKING</Text>
+              <Text style={[
+                styles.infoValue,
+                { color: gpsActive && socketConnected ? Colors.success : Colors.textMuted },
+              ]}>
+                {gpsActive && socketConnected ? 'LIVE' : 'OFF'}
+              </Text>
+            </View>
+            {lastLocationTimestamp && (
               <View style={styles.infoItem}>
-                <Text style={styles.infoLabel}>OCCUPANCY</Text>
-                <Text style={styles.infoValue}>{lastOccupancy}</Text>
+                <Text style={styles.infoLabel}>LAST UPDATE</Text>
+                <Text style={styles.infoValue}>
+                  {new Date(lastLocationTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </Text>
               </View>
             )}
           </View>

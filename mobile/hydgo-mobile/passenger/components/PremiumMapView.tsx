@@ -15,13 +15,16 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Theme, OCCUPANCY_COLORS } from '../../constants/theme';
+import { Theme } from '../../constants/theme';
 import { usePassengerStore } from '../store/passengerStore';
 import { useBusInterpolation, InterpolatedPositions } from '../hooks/useBusInterpolation';
 import { decodePolyline } from '../utils/geo';
 import { getRoadRoute } from '../../lib/directions.api';
 import { api } from '../../lib/api';
-import type { BusState, OccupancyLevel } from '../types';
+import type { BusState } from '../types';
+
+const LIVE_COLOR = '#22c55e';
+const SIM_COLOR = '#3b82f6';
 
 // Mapbox GL JS import (web only)
 let mapboxgl: typeof import('mapbox-gl') | null = null;
@@ -879,7 +882,8 @@ function createBusMarkerElement(
   bus: BusState,
   isSelected: boolean,
 ): HTMLDivElement {
-  const color = OCCUPANCY_COLORS[bus.occupancy.level];
+  const isLive = bus.isLiveDriver === true || bus.isSimulated === false;
+  const color = isLive ? LIVE_COLOR : SIM_COLOR;
   const confidence = bus.confidence ?? 0.7;
 
   const el = document.createElement('div');

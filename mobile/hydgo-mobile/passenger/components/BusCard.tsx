@@ -1,28 +1,30 @@
 // ── Bus Card Component ──────────────────────────────────────────────────────
 // Premium compact card for bottom sheet bus list.
-// Shows route, ETA, confidence, occupancy, traffic, reliability.
+// Shows route, ETA, confidence, traffic, reliability, live/sim status.
 
 import React, { memo } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Theme, OCCUPANCY_COLORS, TRAFFIC_COLORS, CONFIDENCE_COLORS } from '../../constants/theme';
-import { OccupancyBar } from './OccupancyBar';
+import { Theme, TRAFFIC_COLORS, CONFIDENCE_COLORS } from '../../constants/theme';
 import { ReliabilityBadge } from './ReliabilityBadge';
-import type { BusState, OccupancyLevel, TrafficLevel } from '../types';
+import type { BusState, TrafficLevel } from '../types';
 import { formatDistance } from '../utils/geo';
-
-const OCCUPANCY_LABELS: Record<OccupancyLevel, string> = {
-  LOW: 'Low',
-  MEDIUM: 'Medium',
-  HIGH: 'Busy',
-  FULL: 'Full',
-};
 
 const TRAFFIC_LABELS: Record<TrafficLevel, string> = {
   LOW: 'Smooth',
   MODERATE: 'Moderate',
   HIGH: 'Heavy',
 };
+
+/** Format "last updated" timestamp into relative text */
+function formatLastUpdated(timestamp?: string): string {
+  if (!timestamp) return '';
+  const diff = Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000);
+  if (diff < 5) return 'now';
+  if (diff < 60) return `${diff}s`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+  return `${Math.floor(diff / 3600)}h`;
+}
 
 interface BusCardProps {
   bus: BusState;
@@ -31,11 +33,11 @@ interface BusCardProps {
 }
 
 function BusCardInner({ bus, onPress, compact }: BusCardProps) {
-  const occColor = OCCUPANCY_COLORS[bus.occupancy.level];
   const trafficColor = bus.trafficLevel ? TRAFFIC_COLORS[bus.trafficLevel] : undefined;
   const confVal = bus.confidence ?? 0.7;
   const confLabel = confVal >= 0.8 ? 'HIGH' : confVal >= 0.6 ? 'MEDIUM' : 'LOW';
   const confColor = CONFIDENCE_COLORS[confLabel];
+  const isLive = bus.isLiveDriver === true || bus.isSimulated === false;
 
   return (
     <Pressable onPress={() => onPress(bus.id)} style={[styles.card, compact && styles.cardCompact]}>
@@ -76,12 +78,17 @@ function BusCardInner({ bus, onPress, compact }: BusCardProps) {
             <View style={[styles.confidenceDot, { backgroundColor: confColor }]} />
           </View>
         )}
-        <View style={[styles.occBadge, { backgroundColor: occColor + '18', borderColor: occColor + '40' }]}>
-          <View style={[styles.occDot, { backgroundColor: occColor }]} />
-          <Text style={[styles.occText, { color: occColor }]}>
-            {OCCUPANCY_LABELS[bus.occupancy.level]}
+        {/* Live / Simulated status pill */}
+        <View style={[styles.statusPill, isLive ? styles.livePill : styles.simPill]}>
+          <View style={[styles.statusDot, { backgroundColor: isLive ? '#22c55e' : '#3b82f6' }]} />
+          <Text style={[styles.statusText, { color: isLive ? '#22c55e' : '#3b82f6' }]}>
+            {isLive ? 'Live' : 'Demo'}
           </Text>
         </View>
+        {/* Last updated */}
+        {bus.lastUpdated && (
+          <Text style={styles.updatedText}>{formatLastUpdated(bus.lastUpdated)}</Text>
+        )}
       </View>
     </Pressable>
   );
@@ -174,7 +181,7 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
   },
-  occBadge: {
+  statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 6,
@@ -183,13 +190,27 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     gap: 4,
   },
-  occDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+  livePill: {
+    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+    borderColor: 'rgba(34, 197, 94, 0.3)',
   },
-  occText: {
-    fontSize: Theme.font.xs,
-    fontWeight: '600',
+  simPill: {
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    borderColor: 'rgba(59, 130, 246, 0.3)',
+  },
+  statusDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+  },
+  statusText: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  updatedText: {
+    color: Theme.textMuted,
+    fontSize: 9,
+    fontWeight: '500',
   },
 });

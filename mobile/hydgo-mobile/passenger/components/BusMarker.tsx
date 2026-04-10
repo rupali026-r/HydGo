@@ -1,11 +1,16 @@
 // ── Bus Marker Component ────────────────────────────────────────────────────
 // Renders a single bus marker on the map (React Native fallback).
 // DOM markers are used on web (in MapViewLayer). This is for native only.
+// Green border = live driver. Blue border = simulated (demo).
 
 import React, { memo } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { Theme, OCCUPANCY_COLORS } from '../../constants/theme';
+import { Theme } from '../../constants/theme';
 import type { BusState } from '../types';
+
+// Live driver = green, simulated = blue
+const LIVE_COLOR = '#22c55e';
+const SIM_COLOR = '#3b82f6';
 
 interface BusMarkerProps {
   bus: BusState;
@@ -14,7 +19,8 @@ interface BusMarkerProps {
 }
 
 function BusMarkerInner({ bus, isSelected, onPress }: BusMarkerProps) {
-  const color = OCCUPANCY_COLORS[bus.occupancy.level];
+  const isLive = bus.isLiveDriver === true || bus.isSimulated === false;
+  const borderColor = isLive ? LIVE_COLOR : SIM_COLOR;
 
   return (
     <Pressable onPress={() => onPress(bus.id)} style={styles.container}>
@@ -22,10 +28,11 @@ function BusMarkerInner({ bus, isSelected, onPress }: BusMarkerProps) {
         style={[
           styles.marker,
           isSelected && styles.markerSelected,
-          { borderColor: color },
+          { borderColor },
         ]}
       >
-        <View style={[styles.dot, { backgroundColor: color }]} />
+        {/* Pulsing dot for live drivers */}
+        <View style={[styles.dot, { backgroundColor: borderColor }]} />
         <Text style={styles.route} numberOfLines={1}>
           {bus.routeNumber ?? '---'}
         </Text>
@@ -33,6 +40,12 @@ function BusMarkerInner({ bus, isSelected, onPress }: BusMarkerProps) {
       {bus.eta && (
         <View style={styles.etaBadge}>
           <Text style={styles.etaText}>{bus.eta.formattedETA}</Text>
+        </View>
+      )}
+      {/* Near stop indicator */}
+      {bus.nearStop?.arriving && (
+        <View style={styles.arrivingBadge}>
+          <Text style={styles.arrivingText}>Arriving</Text>
         </View>
       )}
     </Pressable>
@@ -44,7 +57,9 @@ export const BusMarker = memo(BusMarkerInner, (prev, next) => {
     prev.bus.id === next.bus.id &&
     prev.bus.latitude === next.bus.latitude &&
     prev.bus.longitude === next.bus.longitude &&
-    prev.bus.occupancy.level === next.bus.occupancy.level &&
+    prev.bus.isSimulated === next.bus.isSimulated &&
+    prev.bus.isLiveDriver === next.bus.isLiveDriver &&
+    prev.bus.nearStop?.arriving === next.bus.nearStop?.arriving &&
     prev.bus.eta?.formattedETA === next.bus.eta?.formattedETA &&
     prev.isSelected === next.isSelected
   );
@@ -95,5 +110,19 @@ const styles = StyleSheet.create({
     color: Theme.text,
     fontSize: 9,
     fontWeight: '600',
+  },
+  arrivingBadge: {
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    marginTop: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+  },
+  arrivingText: {
+    color: '#f59e0b',
+    fontSize: 8,
+    fontWeight: '700',
   },
 });

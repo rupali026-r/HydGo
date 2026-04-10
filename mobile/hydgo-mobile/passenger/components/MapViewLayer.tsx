@@ -9,11 +9,14 @@
 
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
-import { Theme, OCCUPANCY_COLORS } from '../../constants/theme';
+import { Theme } from '../../constants/theme';
 import { usePassengerStore } from '../store/passengerStore';
 import { useBusInterpolation, InterpolatedPositions } from '../hooks/useBusInterpolation';
 import { decodePolyline } from '../utils/geo';
-import type { BusState, OccupancyLevel } from '../types';
+import type { BusState } from '../types';
+
+const LIVE_COLOR = '#22c55e';
+const SIM_COLOR = '#3b82f6';
 
 // Mapbox GL JS import (web only)
 let mapboxgl: typeof import('mapbox-gl') | null = null;
@@ -393,7 +396,8 @@ export function MapViewLayer({ onBusPress }: MapViewLayerProps) {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function createBusMarkerElement(bus: BusState, isSelected: boolean): HTMLDivElement {
-  const color = OCCUPANCY_COLORS[bus.occupancy.level];
+  const isLive = bus.isLiveDriver === true || bus.isSimulated === false;
+  const color = isLive ? LIVE_COLOR : SIM_COLOR;
   const el = document.createElement('div');
   el.className = 'hydgo-bus-marker';
   el.style.cssText = `

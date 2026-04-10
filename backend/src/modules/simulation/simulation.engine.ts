@@ -1,7 +1,6 @@
 import { prisma } from '../../config/database';
 import { getAdminNamespace, getPassengerNamespace } from '../../config/socket';
 import { calculateBearing, haversineDistance } from '../../utils/geo';
-import { calculateOccupancy } from '../../utils/occupancy';
 import { logger } from '../../utils/logger';
 import { isBusDriverControlled, isBusInGracePeriod, getLastDriverPosition, checkRouteFailsafe } from './hybrid-manager';
 
@@ -11,62 +10,60 @@ interface StopInfo {
   latitude: number;
   longitude: number;
   name: string;
-  isMajor: boolean;
 }
 
 interface SimulatedBus {
   busId: string;
   routeId: string;
   routeNumber: string;
+  routeName: string;
+  registrationNo: string;
   polyline: [number, number][];
   stops: StopInfo[];
   currentIndex: number;
   segmentProgress: number;
   direction: 1 | -1;
   capacity: number;
-  passengerCount: number;
   currentSpeed: number;      // km/h
   trafficFactor: number;     // 1.0 – 1.3
   nearStopCooldown: number;  // ticks remaining to slow near stop
+  dwellTicksRemaining: number; // ticks to pause at stop (dwell time)
 }
 
 interface BusUpdate {
   busId: string;
   routeId: string;
   routeNumber: string;
+  routeName: string;
+  registrationNo: string;
   latitude: number;
   longitude: number;
   heading: number;
   speed: number;
-  passengerCount: number;
-  capacity: number;
-  occupancy: ReturnType<typeof calculateOccupancy>;
   isSimulated: boolean;
+  isLiveDriver: boolean;
+  lastUpdated: string;
+  nearStop?: { name: string; arriving: boolean };
 }
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
 const UPDATE_INTERVAL_MS = 3_000;
-const TARGET_BUSES = 20;
-const MAX_CAPACITY = 60;
 
 // Realistic speed range
 const MIN_SPEED_KMH = 20;
 const MAX_SPEED_KMH = 40;
 const STOP_SLOW_SPEED_KMH = 8;  // when within ~100m of a stop
-const NEAR_STOP_DISTANCE_KM = 0.1; // 100 metres
+const NEAR_STOP_DISTANCE_KM = 0.05; // 50 metres (stop detection radius)
 
 // Traffic factor range
 const MIN_TRAFFIC = 1.0;
 const MAX_TRAFFIC = 1.3;
 const TRAFFIC_CHANGE_RATE = 0.02;
 
-// Passenger logic
-const MAJOR_STOP_BOARD_MAX = 12;
-const MINOR_STOP_BOARD_MAX = 5;
-const MAJOR_STOP_ALIGHT_MAX = 8;
-const MINOR_STOP_ALIGHT_MAX = 3;
-const TERMINAL_ALIGHT_PERCENT = 0.7;
+// Stop dwell time: 2-5 ticks (6-15 seconds at 3s intervals)
+const DWELL_TICKS_MIN = 2;
+const DWELL_TICKS_MAX = 5;
 
 // ── State ───────────────────────────────────────────────────────────────────
 
@@ -87,8 +84,12 @@ export function getSimulatedBus(busId: string): SimulatedBus | undefined {
   return activeBuses.get(busId);
 }
 
+/**
+ * Start the simulation engine (fallback-only mode).
+ * Only creates simulated buses for routes that have NO real drivers online.
+ */
 export async function startSimulation(): Promise<void> {
-  logger.info('Starting simulation engine …');
+  logger.info('Starting simulation engine (fallback mode) …');
 
   const routes = await prisma.route.findMany({
     include: { stops: { orderBy: { stopOrder: 'asc' } } },
@@ -99,79 +100,166 @@ export async function startSimulation(): Promise<void> {
     return;
   }
 
-  // Remove any leftover simulated buses
+  // Remove any leftover simulated buses from previous runs
   await prisma.bus.deleteMany({ where: { isSimulated: true } });
 
-  const busesPerRoute = Math.max(1, Math.ceil(TARGET_BUSES / routes.length));
+  // Check which routes already have real drivers online
+  const routesWithDrivers = await prisma.bus.findMany({
+    where: { status: 'ACTIVE', isSimulated: false },
+    select: { routeId: true },
+    distinct: ['routeId'],
+  });
+  const coveredRouteIds = new Set(routesWithDrivers.map(b => b.routeId).filter(Boolean));
+
+  let createdCount = 0;
 
   for (const route of routes) {
-    // Build polyline
-    let polyline: [number, number][];
-    try {
-      polyline = JSON.parse(route.polyline) as [number, number][];
-    } catch {
-      if (route.stops.length >= 2) {
-        polyline = route.stops.map((s) => [s.latitude, s.longitude] as [number, number]);
-      } else {
-        continue;
-      }
+    // Skip routes already covered by real drivers
+    if (coveredRouteIds.has(route.id)) {
+      logger.info(`Simulation: skipping route ${route.routeNumber} — covered by real driver`);
+      continue;
     }
 
-    if (polyline.length < 2) continue;
+    await addSimulatedBusForRoute(route);
+    createdCount++;
+  }
 
-    const smoothed = interpolatePolyline(polyline, 5);
+  logger.info(`Simulation running — ${createdCount} fallback buses across ${routes.length} routes`);
 
-    // Build stop info
-    const majorStopNames = ['MGBS', 'JBS', 'Secunderabad', 'Ameerpet', 'LB Nagar', 'Koti', 'Dilsukhnagar', 'Kukatpally', 'Miyapur', 'ECIL', 'Uppal', 'Mehdipatnam'];
-    const stops: StopInfo[] = route.stops.map((s) => ({
-      latitude: s.latitude,
-      longitude: s.longitude,
-      name: s.name,
-      isMajor: majorStopNames.some((m) => s.name.toLowerCase().includes(m.toLowerCase())),
-    }));
+  if (!interval) {
+    interval = setInterval(tick, UPDATE_INTERVAL_MS);
+  }
 
-    for (let i = 0; i < busesPerRoute; i++) {
-      const capacity = route.routeType === 'SUPER_LUXURY' || route.routeType === 'GARUDA_PLUS' ? 45 : MAX_CAPACITY;
-      const passengerCount = Math.floor(Math.random() * Math.floor(capacity * 0.5)) + 5;
-      const startIdx = Math.floor(Math.random() * (smoothed.length - 1));
+  // Route failsafe: check every 5 minutes for routes with no coverage
+  if (!failsafeInterval) {
+    failsafeInterval = setInterval(checkRouteFailsafe, 5 * 60 * 1000);
+  }
+}
 
-      const bus = await prisma.bus.create({
-        data: {
-          registrationNo: `SIM-${route.routeNumber}-${String(i + 1).padStart(2, '0')}`,
-          routeId: route.id,
-          capacity,
-          passengerCount,
-          latitude: smoothed[startIdx][0],
-          longitude: smoothed[startIdx][1],
-          status: 'ACTIVE',
-          isSimulated: true,
-        },
-      });
+/**
+ * Add a simulated bus for a specific route (used by hybrid manager on driver disconnect).
+ */
+export async function addSimulatedBusForRoute(route: {
+  id: string;
+  routeNumber: string;
+  name: string;
+  polyline: string;
+  stops: Array<{ latitude: number; longitude: number; name: string; stopOrder: number }>;
+}): Promise<void> {
+  // Check if route already has a simulated bus
+  const existingSim = Array.from(activeBuses.values()).find(b => b.routeId === route.id);
+  if (existingSim) return;
 
-      activeBuses.set(bus.id, {
-        busId: bus.id,
-        routeId: route.id,
-        routeNumber: route.routeNumber,
-        polyline: smoothed,
-        stops,
-        currentIndex: startIdx,
-        segmentProgress: 0,
-        direction: Math.random() > 0.5 ? 1 : -1,
-        capacity,
-        passengerCount,
-        currentSpeed: MIN_SPEED_KMH + Math.random() * (MAX_SPEED_KMH - MIN_SPEED_KMH),
-        trafficFactor: MIN_TRAFFIC + Math.random() * (MAX_TRAFFIC - MIN_TRAFFIC),
-        nearStopCooldown: 0,
-      });
+  // Build polyline
+  let polyline: [number, number][];
+  try {
+    polyline = JSON.parse(route.polyline) as [number, number][];
+  } catch {
+    if (route.stops.length >= 2) {
+      polyline = route.stops.map((s) => [s.latitude, s.longitude] as [number, number]);
+    } else {
+      return;
     }
   }
 
-  logger.info(`Simulation running — ${activeBuses.size} virtual buses across ${routes.length} routes`);
+  if (polyline.length < 2) return;
 
-  interval = setInterval(tick, UPDATE_INTERVAL_MS);
+  const smoothed = interpolatePolyline(polyline);
 
-  // Route failsafe: check every 5 minutes for routes with no coverage
-  failsafeInterval = setInterval(checkRouteFailsafe, 5 * 60 * 1000);
+  // Build stop info
+  const stops: StopInfo[] = route.stops.map((s) => ({
+    latitude: s.latitude,
+    longitude: s.longitude,
+    name: s.name,
+  }));
+
+  const startIdx = Math.floor(Math.random() * (smoothed.length - 1));
+
+  const bus = await prisma.bus.create({
+    data: {
+      registrationNo: `SIM-${route.routeNumber}-01`,
+      routeId: route.id,
+      capacity: 52,
+      passengerCount: 0,
+      latitude: smoothed[startIdx][0],
+      longitude: smoothed[startIdx][1],
+      status: 'ACTIVE',
+      isSimulated: true,
+    },
+  });
+
+  activeBuses.set(bus.id, {
+    busId: bus.id,
+    routeId: route.id,
+    routeNumber: route.routeNumber,
+    routeName: route.name,
+    registrationNo: bus.registrationNo,
+    polyline: smoothed,
+    stops,
+    currentIndex: startIdx,
+    segmentProgress: 0,
+    direction: Math.random() > 0.5 ? 1 : -1,
+    capacity: 52,
+    currentSpeed: MIN_SPEED_KMH + Math.random() * (MAX_SPEED_KMH - MIN_SPEED_KMH),
+    trafficFactor: MIN_TRAFFIC + Math.random() * (MAX_TRAFFIC - MIN_TRAFFIC),
+    nearStopCooldown: 0,
+    dwellTicksRemaining: 0,
+  });
+
+  logger.info('Simulation: added fallback bus for route', { routeId: route.id, routeNumber: route.routeNumber, busId: bus.id });
+}
+
+/**
+ * Remove all simulated buses for a route (called when real driver comes online).
+ */
+export async function removeSimulatedBusesForRoute(routeId: string): Promise<void> {
+  const toRemove: string[] = [];
+
+  for (const [busId, sim] of activeBuses) {
+    if (sim.routeId === routeId) {
+      toRemove.push(busId);
+    }
+  }
+
+  for (const busId of toRemove) {
+    activeBuses.delete(busId);
+    wasDriverControlled.delete(busId);
+
+    try {
+      // Notify passengers the simulated bus is gone
+      const passengerNs = getPassengerNamespace();
+      passengerNs.emit('bus:offline', { busId });
+    } catch { /* namespace may not be ready */ }
+
+    try {
+      const adminNs = getAdminNamespace();
+      adminNs.emit('bus:offline', { busId });
+    } catch { /* namespace may not be ready */ }
+
+    // Delete from database
+    try {
+      await prisma.bus.delete({ where: { id: busId } });
+    } catch {
+      // Bus may already be deleted
+    }
+  }
+
+  if (toRemove.length > 0) {
+    logger.info('Simulation: removed fallback buses for route — real driver online', {
+      routeId,
+      removedCount: toRemove.length,
+    });
+  }
+}
+
+/**
+ * Check if a route has simulated bus coverage.
+ */
+export function hasSimulatedCoverage(routeId: string): boolean {
+  for (const sim of activeBuses.values()) {
+    if (sim.routeId === routeId) return true;
+  }
+  return false;
 }
 
 export function stopSimulation(): void {
@@ -192,6 +280,7 @@ export function stopSimulation(): void {
 
 async function tick(): Promise<void> {
   const updates: BusUpdate[] = [];
+  const now = new Date().toISOString();
 
   for (const [busId, sim] of activeBuses) {
     // ── Hybrid override: skip buses controlled by real drivers or in grace period ──
@@ -221,9 +310,68 @@ async function tick(): Promise<void> {
 
     const cur = sim.polyline[sim.currentIndex];
 
+    // ── Stop dwell: if paused at a stop, count down ──
+    if (sim.dwellTicksRemaining > 0) {
+      sim.dwellTicksRemaining--;
+
+      const nearestStop = findNearestStop(cur[0], cur[1], sim.stops);
+      updates.push({
+        busId,
+        routeId: sim.routeId,
+        routeNumber: sim.routeNumber,
+        routeName: sim.routeName,
+        registrationNo: sim.registrationNo,
+        latitude: cur[0],
+        longitude: cur[1],
+        heading: 0,
+        speed: 0,
+        isSimulated: true,
+        isLiveDriver: false,
+        lastUpdated: now,
+        nearStop: nearestStop ? { name: nearestStop.name, arriving: true } : undefined,
+      });
+      continue;
+    }
+
     // Check proximity to nearest stop
     const nearestStopDist = nearestStopDistance(cur[0], cur[1], sim.stops);
     const isNearStop = nearestStopDist < NEAR_STOP_DISTANCE_KM;
+    const nearestStop = isNearStop ? findNearestStop(cur[0], cur[1], sim.stops) : null;
+
+    // ── Stop dwell trigger: start dwelling when arriving at a stop ──
+    if (isNearStop && sim.nearStopCooldown === 0) {
+      sim.dwellTicksRemaining = DWELL_TICKS_MIN + Math.floor(Math.random() * (DWELL_TICKS_MAX - DWELL_TICKS_MIN + 1));
+      sim.nearStopCooldown = sim.dwellTicksRemaining + 3; // prevent re-triggering
+
+      updates.push({
+        busId,
+        routeId: sim.routeId,
+        routeNumber: sim.routeNumber,
+        routeName: sim.routeName,
+        registrationNo: sim.registrationNo,
+        latitude: cur[0],
+        longitude: cur[1],
+        heading: 0,
+        speed: 0,
+        isSimulated: true,
+        isLiveDriver: false,
+        lastUpdated: now,
+        nearStop: nearestStop ? { name: nearestStop.name, arriving: true } : undefined,
+      });
+
+      // Update DB with stopped position
+      try {
+        await prisma.bus.update({
+          where: { id: busId },
+          data: { latitude: cur[0], longitude: cur[1], speed: 0 },
+        });
+      } catch { /* non-critical */ }
+
+      continue;
+    }
+
+    // Decrement cooldown
+    if (sim.nearStopCooldown > 0) sim.nearStopCooldown--;
 
     // Evolve traffic factor slowly
     sim.trafficFactor += (Math.random() - 0.5) * TRAFFIC_CHANGE_RATE;
@@ -233,10 +381,6 @@ async function tick(): Promise<void> {
     let targetSpeed: number;
     if (isNearStop) {
       targetSpeed = STOP_SLOW_SPEED_KMH;
-      sim.nearStopCooldown = 3; // slow for 3 ticks after a stop
-    } else if (sim.nearStopCooldown > 0) {
-      targetSpeed = STOP_SLOW_SPEED_KMH + 5;
-      sim.nearStopCooldown--;
     } else {
       targetSpeed = (MIN_SPEED_KMH + Math.random() * (MAX_SPEED_KMH - MIN_SPEED_KMH)) / sim.trafficFactor;
     }
@@ -271,32 +415,13 @@ async function tick(): Promise<void> {
       if (sim.currentIndex >= sim.polyline.length - 1) {
         sim.direction = -1;
         sim.currentIndex = sim.polyline.length - 2;
-        sim.segmentProgress = 0; // reset to prevent overshoot
-        // Terminal: most passengers alight
-        const alight = Math.floor(sim.passengerCount * TERMINAL_ALIGHT_PERCENT);
-        sim.passengerCount = Math.max(0, sim.passengerCount - alight);
-        break; // stop advancing this tick
+        sim.segmentProgress = 0;
+        break;
       } else if (sim.currentIndex <= 0) {
         sim.direction = 1;
         sim.currentIndex = 1;
-        sim.segmentProgress = 0; // reset to prevent overshoot
-        const alight = Math.floor(sim.passengerCount * TERMINAL_ALIGHT_PERCENT);
-        sim.passengerCount = Math.max(0, sim.passengerCount - alight);
-        break; // stop advancing this tick
-      }
-
-      // Handle passenger boarding/alighting near stops
-      if (isNearStop) {
-        const nearestStop = findNearestStop(cur[0], cur[1], sim.stops);
-        if (nearestStop) {
-          const boardMax = nearestStop.isMajor ? MAJOR_STOP_BOARD_MAX : MINOR_STOP_BOARD_MAX;
-          const alightMax = nearestStop.isMajor ? MAJOR_STOP_ALIGHT_MAX : MINOR_STOP_ALIGHT_MAX;
-
-          const boarding = Math.floor(Math.random() * boardMax);
-          const alighting = Math.floor(Math.random() * Math.min(alightMax, sim.passengerCount));
-
-          sim.passengerCount = Math.max(0, Math.min(sim.capacity, sim.passengerCount + boarding - alighting));
-        }
+        sim.segmentProgress = 0;
+        break;
       }
     }
 
@@ -312,12 +437,10 @@ async function tick(): Promise<void> {
     const heading = calculateBearing(curPt[0], curPt[1], nxt[0], nxt[1]);
     const speed = Math.round(sim.currentSpeed * 10) / 10;
 
-    const occupancy = calculateOccupancy(sim.passengerCount, sim.capacity);
-
     try {
       await prisma.bus.update({
         where: { id: busId },
-        data: { latitude, longitude, heading, speed, passengerCount: sim.passengerCount },
+        data: { latitude, longitude, heading, speed },
       });
     } catch (error) {
       logger.error('Simulation: failed to update bus', { busId, error });
@@ -328,14 +451,16 @@ async function tick(): Promise<void> {
       busId,
       routeId: sim.routeId,
       routeNumber: sim.routeNumber,
+      routeName: sim.routeName,
+      registrationNo: sim.registrationNo,
       latitude,
       longitude,
       heading,
       speed,
-      passengerCount: sim.passengerCount,
-      capacity: sim.capacity,
-      occupancy,
       isSimulated: true,
+      isLiveDriver: false,
+      lastUpdated: now,
+      nearStop: nearestStop ? { name: nearestStop.name, arriving: true } : undefined,
     });
   }
 
@@ -379,12 +504,11 @@ function findNearestStop(lat: number, lng: number, stops: StopInfo[]): StopInfo 
 
 /**
  * Insert intermediate points between each pair of original polyline vertices
- * so that no segment exceeds `maxSegmentKm`. This produces a smoother path
+ * so that no segment exceeds ~30m. This produces a smoother path
  * for bus movement regardless of how far apart the original vertices are.
  */
 function interpolatePolyline(
   points: [number, number][],
-  _subdivisions: number,
 ): [number, number][] {
   const TARGET_SEGMENT_KM = 0.03; // ~30m segments
   const result: [number, number][] = [];

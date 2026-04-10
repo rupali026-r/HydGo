@@ -177,9 +177,9 @@ export const usePassengerStore = create<PassengerState>((set, get) => ({
 
     const merged: BusState = {
       id: update.busId,
-      registrationNo: existing?.registrationNo ?? '',
+      registrationNo: update.registrationNo ?? existing?.registrationNo ?? '',
       routeNumber: update.routeNumber ?? existing?.routeNumber,
-      routeName: existing?.routeName,
+      routeName: update.routeName ?? existing?.routeName,
       routeType: existing?.routeType,
       routeId: update.routeId ?? existing?.routeId,
       latitude: update.latitude,
@@ -191,6 +191,11 @@ export const usePassengerStore = create<PassengerState>((set, get) => ({
       occupancy: update.occupancy ?? existing?.occupancy ?? { level: 'LOW' as const, percent: 0, available: 0 },
       eta: existing?.eta,
       distanceMeters: existing?.distanceMeters,
+      // Hybrid tracking fields
+      isSimulated: update.isSimulated ?? existing?.isSimulated,
+      isLiveDriver: update.isLiveDriver ?? existing?.isLiveDriver,
+      lastUpdated: update.lastUpdated ?? existing?.lastUpdated,
+      nearStop: update.nearStop ?? existing?.nearStop,
     };
 
     next.set(update.busId, merged);
@@ -205,9 +210,9 @@ export const usePassengerStore = create<PassengerState>((set, get) => ({
       const existing = next.get(update.busId);
       const merged: BusState = {
         id: update.busId,
-        registrationNo: existing?.registrationNo ?? '',
+        registrationNo: update.registrationNo ?? existing?.registrationNo ?? '',
         routeNumber: update.routeNumber ?? existing?.routeNumber,
-        routeName: existing?.routeName,
+        routeName: update.routeName ?? existing?.routeName,
         routeType: existing?.routeType,
         routeId: update.routeId ?? existing?.routeId,
         latitude: update.latitude,
@@ -219,6 +224,11 @@ export const usePassengerStore = create<PassengerState>((set, get) => ({
         occupancy: update.occupancy ?? existing?.occupancy ?? { level: 'LOW' as const, percent: 0, available: 0 },
         eta: existing?.eta,
         distanceMeters: existing?.distanceMeters,
+        // Hybrid tracking fields
+        isSimulated: update.isSimulated ?? existing?.isSimulated,
+        isLiveDriver: update.isLiveDriver ?? existing?.isLiveDriver,
+        lastUpdated: update.lastUpdated ?? existing?.lastUpdated,
+        nearStop: update.nearStop ?? existing?.nearStop,
       };
       next.set(update.busId, merged);
     }

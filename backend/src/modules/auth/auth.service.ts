@@ -160,7 +160,14 @@ export class AuthService {
     // Verify Firebase ID token
     let decodedToken;
     try {
-      decodedToken = await firebaseAuth.verifyIdToken(idToken);
+      if (env.SIMULATION_MODE) {
+        // In local development without Google service accounts, just decode the token 
+        // to prevent the Admin SDK from hanging while trying to find GCP metadata credentials
+        decodedToken = jwt.decode(idToken) as any;
+        if (!decodedToken) throw new Error('Invalid token format');
+      } else {
+        decodedToken = await firebaseAuth.verifyIdToken(idToken);
+      }
     } catch (error) {
       logger.error('Firebase ID token verification failed', { error });
       throw new AppError('Invalid Firebase token', 401, 'INVALID_FIREBASE_TOKEN');

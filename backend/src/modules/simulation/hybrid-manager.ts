@@ -1,5 +1,6 @@
 import { prisma } from '../../config/database';
 import { logger } from '../../utils/logger';
+import { removeSimulatedBusesForRoute, addSimulatedBusForRoute, hasSimulatedCoverage } from './simulation.engine';
 
 // ── Hybrid Simulation Override Manager ──────────────────────────────────────
 //
@@ -100,6 +101,11 @@ export function registerDriverBus(
       }
       routeDriverBuses.get(routeId)!.add(busId);
       routeLastDriverTime.set(routeId, Date.now());
+
+      // Remove simulated buses for this route — real driver takes over
+      removeSimulatedBusesForRoute(routeId).catch((err) => {
+        logger.error('Hybrid: failed to remove simulated buses for route', { routeId, error: err });
+      });
     }
 
     logger.info('Hybrid: bus registered as driver-controlled', { busId, driverId, routeId });
@@ -199,6 +205,22 @@ export function unregisterDriverBus(
       }
 
       logger.info('Hybrid: grace period expired — bus released to simulation', { busId, routeId });
+
+      // Re-add simulation coverage for this route if no other real drivers remain
+      if (routeId && !routeDriverBuses.has(routeId)) {
+        try {
+          const route = await prisma.route.findUnique({
+            where: { id: routeId },
+            include: { stops: { orderBy: { stopOrder: 'asc' } } },
+          });
+          if (route && !hasSimulatedCoverage(routeId)) {
+            await addSimulatedBusForRoute(route);
+            logger.info('Hybrid: restored simulation coverage for route', { routeId, routeNumber: route.routeNumber });
+          }
+        } catch (err) {
+          logger.error('Hybrid: failed to restore simulation for route', { routeId, error: err });
+        }
+      }
     } finally {
       busesInTransition.delete(busId);
     }

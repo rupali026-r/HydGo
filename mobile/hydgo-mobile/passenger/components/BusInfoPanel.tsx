@@ -1,7 +1,7 @@
 // ── Floating Bus Card ───────────────────────────────────────────────────────
 // Premium slide-in panel shown when a bus marker is tapped.
-// Shows: bus number, route, ETA (large bold), confidence %, occupancy %,
-// reliability badge, "View Route" and "Start Journey" buttons.
+// Shows: bus number, route, ETA (large bold), confidence %,
+// reliability badge, live/simulated status, last updated.
 // Slide-in animation from bottom.
 
 import React, { useEffect, useCallback } from 'react';
@@ -13,13 +13,11 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import { Theme, OCCUPANCY_COLORS, CONFIDENCE_COLORS } from '../../constants/theme';
+import { Theme, CONFIDENCE_COLORS } from '../../constants/theme';
 import { usePassengerStore } from '../store/passengerStore';
 import { AnimatedETA } from './AnimatedETA';
-import { OccupancyBar } from './OccupancyBar';
 import { ReliabilityBadge } from './ReliabilityBadge';
 import { TrafficIndicator } from './TrafficIndicator';
-import type { OccupancyLevel } from '../types';
 
 const SPRING_CONFIG = { damping: 20, stiffness: 180, mass: 0.8 };
 
@@ -27,6 +25,16 @@ interface FloatingBusCardProps {
   onClose?: () => void;
   onViewRoute?: () => void;
   onStartJourney?: () => void;
+}
+
+/** Format "last updated" timestamp into relative text */
+function formatLastUpdated(timestamp?: string): string {
+  if (!timestamp) return '';
+  const diff = Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000);
+  if (diff < 5) return 'Just now';
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  return `${Math.floor(diff / 3600)}h ago`;
 }
 
 export function FloatingBusCard({ onClose, onViewRoute, onStartJourney }: FloatingBusCardProps) {
@@ -56,10 +64,10 @@ export function FloatingBusCard({ onClose, onViewRoute, onStartJourney }: Floati
   const bus = buses.get(selectedBusId);
   if (!bus) return null;
 
-  const occColor = OCCUPANCY_COLORS[bus.occupancy.level];
   const confidenceVal = bus.confidence ?? 0.7;
   const confidenceLabel = confidenceVal >= 0.8 ? 'HIGH' : confidenceVal >= 0.6 ? 'MEDIUM' : 'LOW';
   const confColor = CONFIDENCE_COLORS[confidenceLabel];
+  const isLive = bus.isLiveDriver === true || bus.isSimulated === false;
 
   return (
     <Animated.View style={[styles.container, animatedStyle]}>
@@ -70,6 +78,15 @@ export function FloatingBusCard({ onClose, onViewRoute, onStartJourney }: Floati
             <Ionicons name="bus" size={16} color={Theme.text} />
             <Text style={styles.routeNumber}>{bus.routeNumber ?? '---'}</Text>
           </View>
+
+          {/* Live / Simulated Badge */}
+          <View style={[styles.statusBadge, isLive ? styles.liveBadge : styles.simBadge]}>
+            <View style={[styles.statusDot, { backgroundColor: isLive ? '#22c55e' : '#3b82f6' }]} />
+            <Text style={[styles.statusBadgeText, { color: isLive ? '#22c55e' : '#3b82f6' }]}>
+              {isLive ? 'Live Driver' : 'Simulated'}
+            </Text>
+          </View>
+
           {bus.reliability && (
             <ReliabilityBadge label={bus.reliability.label} score={bus.reliability.score} compact />
           )}
@@ -82,6 +99,14 @@ export function FloatingBusCard({ onClose, onViewRoute, onStartJourney }: Floati
         <Text style={styles.routeName} numberOfLines={1}>
           {bus.routeName ?? 'Unknown Route'}
         </Text>
+
+        {/* Near stop indicator */}
+        {bus.nearStop?.arriving && (
+          <View style={styles.nearStopBanner}>
+            <Ionicons name="location" size={14} color="#f59e0b" />
+            <Text style={styles.nearStopText}>Arriving at {bus.nearStop.name}</Text>
+          </View>
+        )}
 
         {/* ETA + Confidence row */}
         <View style={styles.etaRow}>
@@ -98,17 +123,14 @@ export function FloatingBusCard({ onClose, onViewRoute, onStartJourney }: Floati
           </View>
           <View style={styles.divider} />
           <View style={styles.statBlock}>
-            <Text style={[styles.statValue, { color: occColor }]}>
-              {bus.occupancy.percent}%
+            <Text style={styles.statValue}>
+              {Math.round(bus.speed)} km/h
             </Text>
-            <Text style={styles.statLabel}>Occupancy</Text>
+            <Text style={styles.statLabel}>Speed</Text>
           </View>
         </View>
 
-        {/* Occupancy bar */}
-        <OccupancyBar level={bus.occupancy.level} percent={bus.occupancy.percent} height={4} />
-
-        {/* Traffic + Speed row */}
+        {/* Traffic + Last Updated row */}
         <View style={styles.infoRow}>
           {bus.trafficLevel && (
             <TrafficIndicator level={bus.trafficLevel} compact />
@@ -117,12 +139,12 @@ export function FloatingBusCard({ onClose, onViewRoute, onStartJourney }: Floati
             <Ionicons name="speedometer-outline" size={12} color={Theme.textTertiary} />
             <Text style={styles.speedText}>{Math.round(bus.speed)} km/h</Text>
           </View>
-          <View style={styles.seatsBadge}>
-            <Ionicons name="people-outline" size={12} color={Theme.textTertiary} />
-            <Text style={styles.seatsText}>
-              {bus.passengerCount ?? 0}/{bus.capacity ?? 52}
-            </Text>
-          </View>
+          {bus.lastUpdated && (
+            <View style={styles.lastUpdatedBadge}>
+              <Ionicons name="time-outline" size={12} color={Theme.textTertiary} />
+              <Text style={styles.lastUpdatedText}>{formatLastUpdated(bus.lastUpdated)}</Text>
+            </View>
+          )}
         </View>
 
         {/* Action buttons */}
@@ -184,6 +206,33 @@ const styles = StyleSheet.create({
     fontSize: Theme.font.lg,
     fontWeight: '700',
   },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    gap: 4,
+    borderWidth: 1,
+  },
+  liveBadge: {
+    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+    borderColor: 'rgba(34, 197, 94, 0.3)',
+  },
+  simBadge: {
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    borderColor: 'rgba(59, 130, 246, 0.3)',
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
   closeBtn: {
     marginLeft: 'auto',
     width: 32,
@@ -194,6 +243,22 @@ const styles = StyleSheet.create({
   routeName: {
     color: Theme.textSecondary,
     fontSize: Theme.font.md,
+  },
+  nearStopBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 6,
+  },
+  nearStopText: {
+    color: '#f59e0b',
+    fontSize: 12,
+    fontWeight: '600',
   },
   etaRow: {
     flexDirection: 'row',
@@ -216,6 +281,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   statValue: {
+    color: Theme.text,
     fontSize: Theme.font.xl,
     fontWeight: '700',
   },
@@ -240,12 +306,13 @@ const styles = StyleSheet.create({
     fontSize: Theme.font.sm,
     fontWeight: '500',
   },
-  seatsBadge: {
+  lastUpdatedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    marginLeft: 'auto',
   },
-  seatsText: {
+  lastUpdatedText: {
     color: Theme.textTertiary,
     fontSize: Theme.font.sm,
     fontWeight: '500',
