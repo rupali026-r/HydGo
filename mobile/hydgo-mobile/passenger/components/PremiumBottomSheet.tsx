@@ -67,6 +67,9 @@ export function PremiumBottomSheet({ onBusPress, onStopPress }: PremiumBottomShe
     return sortBySuggestion(arr);
   }, [buses]);
 
+  const liveDrivers = useMemo(() => allBuses.filter(b => b.isLiveDriver), [allBuses]);
+  const simulatedDrivers = useMemo(() => allBuses.filter(b => !b.isLiveDriver), [allBuses]);
+
   // ── Smart suggestions (server-first, client fallback) ──
   const suggestions = useMemo(() => {
     if (serverSuggestions.length > 0) {
@@ -334,17 +337,37 @@ export function PremiumBottomSheet({ onBusPress, onStopPress }: PremiumBottomShe
               </View>
             )}
 
-            {/* All buses feed */}
-            <View style={styles.sectionHeader}>
-              <Ionicons name="bus-outline" size={14} color={Theme.textTertiary} />
-              <Text style={styles.sectionTitle}>
-                All nearby buses ({allBuses.length})
-              </Text>
-            </View>
+            {/* Real drivers feed */}
+            {liveDrivers.length > 0 && (
+              <>
+                <View style={[styles.sectionHeader, { marginTop: 16 }]}>
+                  <Ionicons name="person" size={14} color={Theme.accentGreen} />
+                  <Text style={[styles.sectionTitle, { color: Theme.accentGreen }]}>
+                    Live Test Drivers ({liveDrivers.length})
+                  </Text>
+                </View>
 
-            {allBuses.map((bus) => (
-              <BusCard key={bus.id} bus={bus} onPress={onBusPress} />
-            ))}
+                {liveDrivers.map((bus) => (
+                  <BusCard key={bus.id} bus={bus} onPress={onBusPress} />
+                ))}
+              </>
+            )}
+
+            {/* Simulated buses feed */}
+            {simulatedDrivers.length > 0 && (
+              <>
+                <View style={[styles.sectionHeader, { marginTop: 16 }]}>
+                  <Ionicons name="hardware-chip-outline" size={14} color={Theme.textTertiary} />
+                  <Text style={styles.sectionTitle}>
+                    Simulated Buses ({simulatedDrivers.length})
+                  </Text>
+                </View>
+
+                {simulatedDrivers.map((bus) => (
+                  <BusCard key={bus.id} bus={bus} onPress={onBusPress} />
+                ))}
+              </>
+            )}
 
             {allBuses.length === 0 && (
               <View style={styles.emptyExpanded}>
