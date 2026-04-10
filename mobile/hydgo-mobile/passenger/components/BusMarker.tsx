@@ -1,16 +1,16 @@
 // ── Bus Marker Component ────────────────────────────────────────────────────
 // Renders a single bus marker on the map (React Native fallback).
 // DOM markers are used on web (in MapViewLayer). This is for native only.
-// Green border = live driver. Blue border = simulated (demo).
+// Green border = live driver. Gray border = scheduled (simulated).
 
 import React, { memo } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Theme } from '../../constants/theme';
 import type { BusState } from '../types';
 
-// Live driver = green, simulated = blue
+// Live driver = green, scheduled = gray
 const LIVE_COLOR = '#22c55e';
-const SIM_COLOR = '#3b82f6';
+const SIM_COLOR = '#4B5563';
 
 interface BusMarkerProps {
   bus: BusState;
@@ -21,6 +21,7 @@ interface BusMarkerProps {
 function BusMarkerInner({ bus, isSelected, onPress }: BusMarkerProps) {
   const isLive = bus.isLiveDriver === true || bus.isSimulated === false;
   const borderColor = isLive ? LIVE_COLOR : SIM_COLOR;
+  const containerScale = isLive ? 1.0 : 0.85; // Simulated markers are smaller
 
   return (
     <Pressable onPress={() => onPress(bus.id)} style={styles.container}>
@@ -28,14 +29,20 @@ function BusMarkerInner({ bus, isSelected, onPress }: BusMarkerProps) {
         style={[
           styles.marker,
           isSelected && styles.markerSelected,
-          { borderColor },
+          { borderColor, transform: [{ scale: containerScale }] },
         ]}
       >
-        {/* Pulsing dot for live drivers */}
         <View style={[styles.dot, { backgroundColor: borderColor }]} />
-        <Text style={styles.route} numberOfLines={1}>
+        <Text style={[styles.route, !isLive && styles.routeMuted]} numberOfLines={1}>
           {bus.routeNumber ?? '---'}
         </Text>
+        
+        {/* LIVE Badge */}
+        {isLive && (
+          <View style={styles.liveBadge}>
+            <Text style={styles.liveBadgeText}>LIVE</Text>
+          </View>
+        )}
       </View>
       {bus.eta && (
         <View style={styles.etaBadge}>
@@ -82,7 +89,7 @@ const styles = StyleSheet.create({
   markerSelected: {
     backgroundColor: Theme.bgElevated,
     borderWidth: 3,
-    transform: [{ scale: 1.15 }],
+    // Note: overriding transform here if selected
     boxShadow: '0px 2px 8px rgba(255, 255, 255, 0.12)',
     elevation: 6,
   },
@@ -95,6 +102,22 @@ const styles = StyleSheet.create({
     color: Theme.text,
     fontSize: 11,
     fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  routeMuted: {
+    color: '#9CA3AF',
+  },
+  liveBadge: {
+    backgroundColor: 'rgba(34, 197, 94, 0.2)',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 2,
+  },
+  liveBadgeText: {
+    color: '#22c55e',
+    fontSize: 8,
+    fontWeight: '800',
     letterSpacing: 0.5,
   },
   etaBadge: {

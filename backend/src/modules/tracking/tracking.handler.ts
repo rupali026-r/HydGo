@@ -598,6 +598,12 @@ export function setupDriverTracking(ns: Namespace): void {
             // Redis down — local socket broadcasts still work
           }
 
+          logger.info(`[Pipeline] Broadcasted bus:update for ${busId}`, { 
+            isLiveDriver: true, 
+            isSimulated: false,
+            passengerNsReady: true 
+          });
+
           // ── Evaluate notification rules ──
           notificationRulesService.evaluateBusUpdate({
             busId,

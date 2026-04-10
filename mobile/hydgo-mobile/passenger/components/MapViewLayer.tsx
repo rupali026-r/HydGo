@@ -16,7 +16,7 @@ import { decodePolyline } from '../utils/geo';
 import type { BusState } from '../types';
 
 const LIVE_COLOR = '#22c55e';
-const SIM_COLOR = '#3b82f6';
+const SIM_COLOR = '#4B5563';
 
 // Mapbox GL JS import (web only)
 let mapboxgl: typeof import('mapbox-gl') | null = null;
@@ -38,6 +38,11 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
       0% { transform: scale(1); opacity: 0.6; }
       50% { transform: scale(2.2); opacity: 0; }
       100% { transform: scale(1); opacity: 0; }
+    }
+    @keyframes hydgo-live-pulse {
+      0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+      70% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
     }
     .hydgo-user-halo {
       position: absolute;
@@ -398,6 +403,8 @@ export function MapViewLayer({ onBusPress }: MapViewLayerProps) {
 function createBusMarkerElement(bus: BusState, isSelected: boolean): HTMLDivElement {
   const isLive = bus.isLiveDriver === true || bus.isSimulated === false;
   const color = isLive ? LIVE_COLOR : SIM_COLOR;
+  const containerScale = isLive ? 1.0 : 0.85; // Simulated markers are smaller
+
   const el = document.createElement('div');
   el.className = 'hydgo-bus-marker';
   el.style.cssText = `
@@ -411,13 +418,14 @@ function createBusMarkerElement(bus: BusState, isSelected: boolean): HTMLDivElem
     padding: 4px 10px;
     cursor: pointer;
     z-index: ${isSelected ? 100 : 10};
-    transform: scale(${isSelected ? 1.15 : 1});
+    transform: scale(${isSelected ? 1.15 : containerScale});
     user-select: none;
     box-shadow: ${isSelected
       ? '0 4px 20px rgba(255,255,255,0.15)'
       : '0 2px 8px rgba(0,0,0,0.4)'};
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
+    ${isLive ? 'animation: hydgo-live-pulse 2s infinite;' : ''}
   `;
 
   const dot = document.createElement('span');
@@ -432,7 +440,7 @@ function createBusMarkerElement(bus: BusState, isSelected: boolean): HTMLDivElem
   const label = document.createElement('span');
   label.textContent = bus.routeNumber ?? '---';
   label.style.cssText = `
-    color: ${Theme.text};
+    color: ${isLive ? Theme.text : '#9CA3AF'};
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.5px;
@@ -442,6 +450,23 @@ function createBusMarkerElement(bus: BusState, isSelected: boolean): HTMLDivElem
 
   el.appendChild(dot);
   el.appendChild(label);
+
+  if (isLive) {
+    const liveBadge = document.createElement('span');
+    liveBadge.textContent = 'LIVE';
+    liveBadge.style.cssText = `
+      background: rgba(34, 197, 94, 0.2);
+      color: #22c55e;
+      font-size: 8px;
+      font-weight: 800;
+      padding: 2px 4px;
+      border-radius: 4px;
+      margin-left: 2px;
+      letter-spacing: 0.5px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;
+    el.appendChild(liveBadge);
+  }
 
   if (bus.eta) {
     const etaMin = bus.eta.estimatedMinutes ?? 99;

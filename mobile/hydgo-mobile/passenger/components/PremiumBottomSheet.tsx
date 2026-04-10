@@ -341,9 +341,12 @@ export function PremiumBottomSheet({ onBusPress, onStopPress }: PremiumBottomShe
             {liveDrivers.length > 0 && (
               <>
                 <View style={[styles.sectionHeader, { marginTop: 16 }]}>
-                  <Ionicons name="person" size={14} color={Theme.accentGreen} />
+                  <View style={styles.liveIndicatorContainer}>
+                    <View style={styles.liveIndicatorPulse} />
+                    <View style={styles.liveIndicatorDot} />
+                  </View>
                   <Text style={[styles.sectionTitle, { color: Theme.accentGreen }]}>
-                    Live Test Drivers ({liveDrivers.length})
+                    Live Drivers ({liveDrivers.length})
                   </Text>
                 </View>
 
@@ -356,11 +359,14 @@ export function PremiumBottomSheet({ onBusPress, onStopPress }: PremiumBottomShe
             {/* Simulated buses feed */}
             {simulatedDrivers.length > 0 && (
               <>
-                <View style={[styles.sectionHeader, { marginTop: 16 }]}>
-                  <Ionicons name="hardware-chip-outline" size={14} color={Theme.textTertiary} />
-                  <Text style={styles.sectionTitle}>
-                    Simulated Buses ({simulatedDrivers.length})
-                  </Text>
+                <View style={[styles.sectionHeader, { marginTop: 16, flexDirection: 'column', alignItems: 'flex-start', gap: 2 }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Ionicons name="time-outline" size={14} color={Theme.textTertiary} />
+                    <Text style={styles.sectionTitle}>
+                      Scheduled Buses ({simulatedDrivers.length})
+                    </Text>
+                  </View>
+                  <Text style={styles.scheduledSubtitle}>Estimated positions</Text>
                 </View>
 
                 {simulatedDrivers.map((bus) => (
@@ -658,6 +664,32 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     flex: 1,
+  },
+  scheduledSubtitle: {
+    color: Theme.textDim,
+    fontSize: Theme.font.xs,
+    fontStyle: 'italic',
+  },
+  liveIndicatorContainer: {
+    width: 14,
+    height: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  liveIndicatorPulse: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: Theme.accentGreen,
+    opacity: 0.2,
+  },
+  liveIndicatorDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Theme.accentGreen,
   },
 
   // ── Suggestion card ──
