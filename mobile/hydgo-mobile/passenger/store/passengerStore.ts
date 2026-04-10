@@ -171,6 +171,7 @@ export const usePassengerStore = create<PassengerState>((set, get) => ({
   },
 
   updateBus: (update) => {
+    console.log('[STORE UPDATED BUS]', { busId: update.busId, isLiveDriver: update.isLiveDriver });
     const { buses } = get();
     const next = new Map(buses);
     const existing = next.get(update.busId);

@@ -125,6 +125,7 @@ export function usePassengerSocket() {
       // Real driver location update (singular)
       socket.on('bus:update', (update: BusUpdate) => {
         if (!mounted) return;
+        console.log('[PASSENGER RECEIVED UPDATE]', update);
         updateBus(update);
       });
 

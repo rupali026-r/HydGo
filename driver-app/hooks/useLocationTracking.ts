@@ -148,6 +148,7 @@ export function useLocationTracking({ emit }: UseLocationTrackingOptions) {
             return;
           }
 
+          console.log('[DRIVER EMIT]', { event: 'driver:location:update', busId: payload.busId, lat: payload.lat, lng: payload.lng });
           throttledEmit(payload);
         },
       );

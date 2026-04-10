@@ -401,6 +401,7 @@ export function MapViewLayer({ onBusPress }: MapViewLayerProps) {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function createBusMarkerElement(bus: BusState, isSelected: boolean): HTMLDivElement {
+  console.log('[MAP RENDERING]', { busId: bus.id, isLiveDriver: bus.isLiveDriver, lat: bus.latitude, lng: bus.longitude, platform: 'web' });
   const isLive = bus.isLiveDriver === true || bus.isSimulated === false;
   const color = isLive ? LIVE_COLOR : SIM_COLOR;
   const containerScale = isLive ? 1.0 : 0.85; // Simulated markers are smaller

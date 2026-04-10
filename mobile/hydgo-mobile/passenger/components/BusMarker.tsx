@@ -19,6 +19,7 @@ interface BusMarkerProps {
 }
 
 function BusMarkerInner({ bus, isSelected, onPress }: BusMarkerProps) {
+  console.log('[MAP RENDERING]', { busId: bus.id, isLiveDriver: bus.isLiveDriver, lat: bus.latitude, lng: bus.longitude, platform: 'native' });
   const isLive = bus.isLiveDriver === true || bus.isSimulated === false;
   const borderColor = isLive ? LIVE_COLOR : SIM_COLOR;
   const containerScale = isLive ? 1.0 : 0.85; // Simulated markers are smaller

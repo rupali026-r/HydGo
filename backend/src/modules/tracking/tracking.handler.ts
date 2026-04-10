@@ -471,6 +471,7 @@ export function setupDriverTracking(ns: Namespace): void {
         passengerCount?: number;
       }) => {
         try {
+          console.log('[BACKEND RECEIVED DRIVER GPS]', data);
           // Validate bus ownership
           if (data.busId !== busId) {
             socket.emit('error', { message: 'Bus ID mismatch — not your assigned bus' });
@@ -580,6 +581,7 @@ export function setupDriverTracking(ns: Namespace): void {
           };
 
           // ── Broadcast to passenger & admin namespaces ──
+          console.log('[BACKEND BROADCASTING TO PASSENGERS]', { busId, lat: data.lat, lng: data.lng, isLiveDriver: true });
           try {
             const passengerNs = getPassengerNamespace();
             passengerNs.emit('bus:update', busUpdate);
