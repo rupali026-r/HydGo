@@ -236,6 +236,7 @@ export function setupPassengerTracking(ns: Namespace): void {
             heading: bus.heading,
             speed: bus.speed,
             isSimulated: bus.isSimulated,
+            isLiveDriver: !bus.isSimulated,
             distanceMeters,
             occupancy,
             eta: {
