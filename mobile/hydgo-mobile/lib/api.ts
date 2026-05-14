@@ -5,7 +5,7 @@ import { getItem, setItem, removeItem } from './storage';
 const baseURL =
   (process.env as any).EXPO_PUBLIC_API_URL ||
   (Constants?.expoConfig?.extra as any)?.API_BASE_URL ||
-  'http://localhost:3000/api';
+  'https://hydgo-backend.onrender.com/api';
 
 export const api = axios.create({ baseURL, timeout: 15000 });
 
