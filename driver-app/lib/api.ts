@@ -1,7 +1,6 @@
 /**
  * HydGo Driver — Axios HTTP client
  * Mirrors the passenger app's api.ts.
- * Base URL: 192.168.29.195:3000/api (real backend, never localhost)
  * Auto-refresh on 401, queue-based retry.
  */
 
@@ -12,7 +11,7 @@ import { getItem, setItem, removeItem } from './storage';
 const baseURL =
   (process.env as any).EXPO_PUBLIC_API_URL ||
   (Constants?.expoConfig?.extra as Record<string, string> | undefined)?.API_BASE_URL ||
-  'http://localhost:3000/api';
+  'https://hydgo-backend.onrender.com/api';
 
 export const API_BASE = baseURL.replace(/\/api$/, '');
 
